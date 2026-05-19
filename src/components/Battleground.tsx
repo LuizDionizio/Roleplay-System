@@ -6,6 +6,10 @@ import { usePingSystem } from '../systems/spatial/pingSystem'
 import { useSpotlightSystem, SPOTLIGHT_CONFIG } from '../systems/spatial/spotlightSystem'
 import { useAmbienceSystem } from '../systems/atmosphere/ambienceSystem'
 import { AMBIENCE_REGISTRY } from '../systems/atmosphere/ambienceRegistry'
+import { useSceneSystem } from '../systems/narrative/sceneSystem'
+import { SCENE_REGISTRY } from '../systems/narrative/sceneRegistry'
+import { useLightingSystem, LIGHTING_CONFIG } from '../systems/lighting/lightingSystem'
+import { LIGHT_REGISTRY } from '../systems/lighting/lightRegistry'
 
 function MapCorner({ className }: { className: string }) {
   return (
@@ -37,8 +41,11 @@ export function Battleground() {
   const { pings, addPing } = usePingSystem()
   const { spotlight, lastPosition, toggleSpotlight } = useSpotlightSystem()
   const { state: ambienceState, toggleAmbience, setTrack } = useAmbienceSystem()
+  const { currentSceneConfig, setScene } = useSceneSystem()
+  const { lights, addLight, removeLight } = useLightingSystem()
   
   const [isAtmosphereMenuOpen, setIsAtmosphereMenuOpen] = useState(false)
+  const [isSceneMenuOpen, setIsSceneMenuOpen] = useState(false)
 
   useEffect(() => {
     if (!draggingTokenId) return
@@ -150,6 +157,8 @@ export function Battleground() {
                   
                   if (e.shiftKey) {
                     toggleSpotlight({ x, y })
+                  } else if (e.ctrlKey) {
+                    addLight({ x, y })
                   } else {
                     addPing({ x, y })
                   }
@@ -165,14 +174,65 @@ export function Battleground() {
 
             {/* Spotlight Overlay */}
             <div 
-              className={`pointer-events-none absolute z-20 flex size-[6000px] items-center justify-center transition-[left,top,opacity] duration-1000 ease-[cubic-bezier(0.2,1,0.2,1)] ${spotlight ? 'opacity-100' : 'opacity-0'}`}
+              className={`pointer-events-none absolute z-20 flex size-[6000px] items-center justify-center transition-[left,top,opacity,transform] ease-[cubic-bezier(0.2,1,0.2,1)] ${spotlight ? 'opacity-100' : 'opacity-0'}`}
               style={{
                 left: spotlight?.position.x ?? lastPosition.x,
                 top: spotlight?.position.y ?? lastPosition.y,
-                transform: 'translate(-50%, -50%)',
+                transform: `translate(-50%, -50%) scale(${currentSceneConfig.spotlightScale})`,
+                transitionDuration: `1000ms, 1000ms, 1000ms, ${currentSceneConfig.transitionDurationMs}ms`,
+                transitionProperty: 'left, top, opacity, transform',
                 background: `radial-gradient(circle ${SPOTLIGHT_CONFIG.defaultRadius}px at center, transparent 0%, rgba(12,10,8,0.15) 30%, rgba(8,8,10,0.7) 70%, rgba(8,8,10,0.9) 100%)`
               }}
             />
+
+            {/* Dynamic Narrative Lighting */}
+            <div className="absolute inset-0 z-20 pointer-events-none" style={{ mixBlendMode: LIGHTING_CONFIG.defaultBlendMode as React.CSSProperties['mixBlendMode'] }}>
+              {lights.map(light => {
+                const preset = LIGHT_REGISTRY[light.presetId];
+                if (!preset) return null;
+                
+                return (
+                  <div
+                    key={light.id}
+                    className="absolute pointer-events-none"
+                    style={{
+                      left: light.position.x,
+                      top: light.position.y,
+                      width: preset.radius * 2,
+                      height: preset.radius * 2,
+                      marginLeft: -preset.radius,
+                      marginTop: -preset.radius,
+                      background: `radial-gradient(circle, ${preset.color} 0%, transparent 70%)`,
+                      animation: `light-flicker-${preset.flicker.speed} ${preset.flicker.speed === 'slow' ? '4s' : preset.flicker.speed === 'fast' ? '0.5s' : '2s'} infinite ease-in-out alternate`
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Lighting Interaction Layer */}
+            {lights.map(light => (
+              <div
+                key={`interaction-${light.id}`}
+                className="absolute z-20 size-16 pointer-events-auto cursor-pointer rounded-full border border-amber-500/0 bg-amber-500/0 transition-all duration-300 hover:border-amber-500/40 hover:bg-amber-500/10 hover:shadow-[0_0_20px_rgba(245,158,11,0.2)]"
+                style={{
+                  left: light.position.x,
+                  top: light.position.y,
+                  transform: `translate(-50%, -50%) scale(${1 / mapScale})`
+                }}
+                onPointerDown={(e) => {
+                  if (e.button === 2) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    removeLight(light.id)
+                  }
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              />
+            ))}
 
             {/* Spatial Pings */}
             {pings.map(ping => (
@@ -261,6 +321,14 @@ export function Battleground() {
           {/* Atmospheric Vignette & Depth Layers */}
           <div
             aria-hidden
+            className="absolute inset-0 bg-black pointer-events-none transition-opacity ease-[cubic-bezier(0.2,1,0.2,1)]"
+            style={{ 
+              opacity: currentSceneConfig.baseDarkness,
+              transitionDuration: `${currentSceneConfig.transitionDurationMs}ms` 
+            }}
+          />
+          <div
+            aria-hidden
             className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,transparent_50%,rgba(8,8,10,0.2)_75%,rgba(8,8,10,0.85)_100%)] pointer-events-none"
           />
           <div
@@ -297,6 +365,8 @@ export function Battleground() {
                   <div className="flex flex-col gap-0.5">
                     {Object.values(AMBIENCE_REGISTRY).map(track => {
                       const isSelected = track.id === ambienceState.currentTrackId
+                      const isSuggested = track.id === currentSceneConfig.suggestedAmbienceId
+                      
                       return (
                         <button
                           key={track.id}
@@ -307,7 +377,12 @@ export function Battleground() {
                               : 'text-zinc-400 hover:bg-zinc-900/60 hover:text-amber-100'
                           }`}
                         >
-                          <span className="font-medium tracking-wide">{track.name}</span>
+                          <div className="flex flex-col">
+                            <span className="font-medium tracking-wide">{track.name}</span>
+                            {isSuggested && (
+                              <span className="text-[9px] text-amber-600/70 tracking-widest uppercase mt-0.5">Sugestão da Cena</span>
+                            )}
+                          </div>
                           {isSelected && ambienceState.isActive && (
                             <span className="flex gap-0.5">
                               <span className="size-1 rounded-full bg-amber-400 animate-pulse" />
@@ -330,9 +405,47 @@ export function Battleground() {
                 <span className="rounded border border-amber-900/25 bg-zinc-950/70 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-amber-200/35 backdrop-blur-md">
                   Grade · 1,5 m
                 </span>
-                <span className="hidden rounded border border-zinc-800/45 bg-zinc-950/65 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500 backdrop-blur-md sm:inline">
-                  Cena · Catacumbas
-                </span>
+                <div className="relative hidden sm:block">
+                  {/* Scene Popover */}
+                  {isSceneMenuOpen && (
+                    <div className="absolute bottom-full mb-2 left-0 w-40 overflow-hidden rounded-xl border border-amber-900/20 bg-zinc-950/80 p-1 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-md">
+                      <div className="mb-1 px-2 py-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500/70">Atmosfera Narrativa</span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        {Object.values(SCENE_REGISTRY).map(scene => {
+                          const isSelected = scene.id === currentSceneConfig.id
+                          return (
+                            <button
+                              key={scene.id}
+                              onClick={() => {
+                                setScene(scene.id)
+                                setIsSceneMenuOpen(false)
+                              }}
+                              className={`flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                                isSelected
+                                  ? 'bg-amber-900/20 text-amber-200'
+                                  : 'text-zinc-400 hover:bg-zinc-900/60 hover:text-amber-100'
+                              }`}
+                            >
+                              <span className="font-medium tracking-wide">{scene.name}</span>
+                              {isSelected && (
+                                <span className="size-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <button
+                    onClick={() => setIsSceneMenuOpen(prev => !prev)}
+                    className="rounded border border-zinc-800/45 bg-zinc-950/65 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-zinc-400 transition-colors hover:border-amber-900/40 hover:text-amber-200 backdrop-blur-md"
+                  >
+                    Cena · {currentSceneConfig.name}
+                  </button>
+                </div>
               </div>
             </div>
             <span className="rounded border border-amber-900/25 bg-zinc-950/70 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-amber-200/45 backdrop-blur-md">

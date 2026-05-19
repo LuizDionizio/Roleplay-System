@@ -111,3 +111,28 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+@keyframes light-flicker-slow {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
+}
+
+@keyframes light-flicker-normal {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  25% { opacity: 0.95; transform: scale(1.01); }
+  50% { opacity: 0.85; transform: scale(0.99); }
+  75% { opacity: 1; transform: scale(1.02); }
+}
+
+@keyframes light-flicker-fast {
+  0%, 100% { opacity: 0.9; }
+  10% { opacity: 0.95; }
+  20% { opacity: 0.85; }
+  30% { opacity: 1; }
+  40% { opacity: 0.9; }
+  50% { opacity: 0.85; }
+  60% { opacity: 0.95; }
+  70% { opacity: 1; }
+  80% { opacity: 0.9; }
+  90% { opacity: 0.85; }
+}
