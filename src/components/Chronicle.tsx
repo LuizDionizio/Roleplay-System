@@ -14,13 +14,13 @@ const LOG_ENTRIES = [
 function LogMessage({ entry }: { entry: (typeof LOG_ENTRIES)[number] }) {
   const styles = {
     system: 'text-zinc-500 italic',
-    narration: 'text-amber-200/90 font-medium',
-    player: 'text-zinc-300',
-    roll: 'text-amber-500 font-medium bg-amber-950/20 px-2 py-0.5 rounded border border-amber-900/30 inline-block mt-1',
+    narration: 'text-amber-200/80 font-medium',
+    player: 'text-zinc-400',
+    roll: 'text-amber-500 font-medium bg-amber-950/20 px-2 py-0.5 rounded border border-subtle inline-block mt-1',
   }
 
   return (
-    <div className="group relative flex gap-3 px-4 py-1.5 transition-colors hover:bg-white/[0.02]">
+    <div className="group relative flex gap-3 px-4 py-1.5 transition-hover hover:bg-white/[0.02]">
       <time className="w-10 shrink-0 pt-0.5 text-xs text-zinc-600">
         {entry.time}
       </time>
@@ -68,13 +68,13 @@ export function Chronicle({ open, setOpen }: { open: boolean, setOpen: (open: bo
 
   return (
     <footer
-      className={`relative z-30 flex w-full shrink-0 flex-col transition-[height,transform,opacity] duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] ${
+      className={`relative z-30 flex w-full shrink-0 flex-col transition-cinematic ${
         open ? 'h-[var(--chronicle-height)] translate-y-0 opacity-100' : 'h-0 translate-y-full opacity-0 sm:h-2 sm:translate-y-0 sm:opacity-100'
       }`}
       style={{ '--chronicle-height': `${chronicleHeight}px` } as React.CSSProperties}
     >
       <div
-        className={`absolute inset-x-0 bottom-0 flex h-[var(--chronicle-height)] flex-col border-t border-amber-900/20 bg-zinc-950/95 shadow-[0_-8px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] ${
+        className={`absolute inset-x-0 bottom-0 flex h-[var(--chronicle-height)] flex-col border-t border-subtle bg-zinc-950/95 shadow-cinematic-lg blur-ambient-lg transition-cinematic ${
           open ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
         }`}
       >
@@ -90,22 +90,22 @@ export function Chronicle({ open, setOpen }: { open: boolean, setOpen: (open: bo
           />
         )}
 
-        <div className="flex shrink-0 items-center justify-between border-b border-amber-900/20 px-4 pt-1 sm:pt-1.5">
+        <div className="flex shrink-0 items-center justify-between border-b border-subtle px-4 pt-1 sm:pt-1.5">
           <div className="flex gap-6">
-            <button className="relative pb-2 pt-2 text-xs font-semibold tracking-widest text-amber-200/90 uppercase transition-colors hover:text-amber-100">
+            <button className="relative pb-2 pt-2 text-xs font-semibold tracking-widest text-amber-200/90 uppercase transition-hover hover:text-amber-100">
               Crônica
-              <span className="absolute inset-x-0 bottom-0 h-px bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+              <span className="absolute inset-x-0 bottom-0 h-px bg-amber-500 shadow-glow-subtle" />
             </button>
-            <button className="pb-2 pt-2 text-xs font-medium tracking-widest text-zinc-500 uppercase transition-colors hover:text-zinc-300">
+            <button className="pb-2 pt-2 text-xs font-medium tracking-widest text-zinc-500 uppercase transition-hover hover:text-zinc-300">
               Combate
             </button>
           </div>
           <button
             onClick={() => setOpen(false)}
             aria-label="Recolher painel"
-            className="group flex size-6 items-center justify-center rounded hover:bg-white/5"
+            className="group flex size-6 items-center justify-center rounded transition-hover hover:bg-white/5"
           >
-            <ChevronIcon direction="down" className="text-amber-700/50 group-hover:text-amber-500" />
+            <ChevronIcon direction="down" className="text-amber-700/50 transition-hover group-hover:text-amber-500" />
           </button>
         </div>
 
@@ -116,14 +116,14 @@ export function Chronicle({ open, setOpen }: { open: boolean, setOpen: (open: bo
         </div>
 
         <div className="shrink-0 p-3 sm:p-4">
-          <div className="relative flex rounded-lg border border-amber-900/20 bg-zinc-900/50 shadow-inner transition-colors focus-within:border-amber-700/50 focus-within:bg-zinc-900/80">
-            <PanelGlow className="opacity-0 transition-opacity focus-within:opacity-100" />
+          <div className="relative flex rounded-lg border border-subtle bg-zinc-900/50 shadow-inner transition-cinematic focus-within:border-focus focus-within:bg-zinc-900/80">
+            <PanelGlow className="opacity-0 transition-cinematic focus-within:opacity-100" />
             <input
               type="text"
               placeholder="Descreva sua ação ou digite / para comandos..."
               className="w-full bg-transparent px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
             />
-            <button className="m-1 shrink-0 rounded-md px-3 text-xs font-medium text-amber-700/80 transition-colors hover:bg-amber-950/50 hover:text-amber-500">
+            <button className="m-1 shrink-0 rounded-md px-3 text-xs font-medium text-amber-700/80 transition-hover hover:bg-amber-950/50 hover:text-amber-500">
               Enviar
             </button>
           </div>
@@ -135,17 +135,17 @@ export function Chronicle({ open, setOpen }: { open: boolean, setOpen: (open: bo
         onClick={() => setOpen(true)}
         aria-label="Expandir painel"
         aria-expanded={open}
-        className={`group absolute inset-x-0 bottom-0 hidden h-2 items-center justify-center border-t border-amber-900/20 bg-zinc-950/80 transition-all duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] hover:h-4 hover:bg-zinc-900/90 hover:shadow-[0_0_15px_rgba(212,175,55,0.1)] sm:flex ${
+        className={`group absolute inset-x-0 bottom-0 hidden h-2 items-center justify-center border-t border-subtle bg-zinc-950/80 transition-cinematic hover:h-4 hover:bg-zinc-900/90 hover:shadow-glow-subtle sm:flex ${
           open ? 'translate-y-full opacity-0' : 'translate-y-0 opacity-100'
         }`}
       >
-        <ChevronIcon direction="up" className="text-amber-700/30 transition-transform duration-300 group-hover:scale-110 group-hover:text-amber-500" />
+        <ChevronIcon direction="up" className="text-amber-700/30 transition-hover group-hover:scale-110 group-hover:text-amber-500" />
       </button>
 
       {/* Mobile Swipe Tab */}
       <button
         onClick={() => setOpen((p) => !p)}
-        className={`absolute -top-6 left-1/2 flex h-6 w-16 -translate-x-1/2 items-center justify-center rounded-t-lg border-x border-t border-amber-900/20 bg-zinc-950/90 shadow-lg backdrop-blur-md transition-opacity sm:hidden ${
+        className={`absolute -top-6 left-1/2 flex h-6 w-16 -translate-x-1/2 items-center justify-center rounded-t-lg border-x border-t border-subtle bg-zinc-950/90 shadow-cinematic-md blur-ambient-md transition-cinematic sm:hidden ${
           open ? 'opacity-0' : 'opacity-100'
         }`}
       >

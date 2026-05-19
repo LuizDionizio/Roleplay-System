@@ -76,7 +76,7 @@ export function MapToolbar({
     <div
       role="toolbar"
       aria-label="Ferramentas do mapa"
-      className="flex items-center gap-0.5 rounded-lg border border-amber-900/20 bg-zinc-950/55 p-0.5 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md"
+      className="flex items-center gap-0.5 rounded-lg border border-subtle bg-zinc-950/55 p-0.5 shadow-cinematic-sm blur-ambient-md"
     >
       {MAP_TOOLBAR_ACTIONS.map((action, index) => {
         const isActive = activeIds.includes(action.id)
@@ -91,7 +91,7 @@ export function MapToolbar({
               aria-label={action.label}
               title={action.label}
               onClick={() => onAction(action.id)}
-              className={`flex size-7 items-center justify-center rounded-md transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-amber-700/50 sm:size-8 ${
+              className={`flex size-7 items-center justify-center rounded-md transition-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-amber-700/50 sm:size-8 ${
                 isActive 
                   ? 'bg-amber-950/50 text-amber-400 shadow-[inset_0_0_8px_rgba(251,191,36,0.2)]' 
                   : 'text-zinc-500 hover:bg-amber-950/35 hover:text-amber-200/70'

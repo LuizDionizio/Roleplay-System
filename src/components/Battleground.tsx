@@ -8,8 +8,10 @@ import { useAmbienceSystem } from '../systems/atmosphere/ambienceSystem'
 import { AMBIENCE_REGISTRY } from '../systems/atmosphere/ambienceRegistry'
 import { useSceneSystem } from '../systems/narrative/sceneSystem'
 import { SCENE_REGISTRY } from '../systems/narrative/sceneRegistry'
-import { useLightingSystem, LIGHTING_CONFIG } from '../systems/lighting/lightingSystem'
-import { LIGHT_REGISTRY } from '../systems/lighting/lightRegistry'
+import { useFogSystem } from '../systems/fog/fogSystem'
+import { FogOverlay } from '../systems/fog/FogOverlay'
+import { usePerspectiveSystem } from '../systems/perspective/perspectiveSystem'
+import { NarrativeToolbar } from './tools/NarrativeToolbar'
 
 function MapCorner({ className }: { className: string }) {
   return (
@@ -39,13 +41,59 @@ export function Battleground() {
   const tokenPointerRef = useRef({ x: 0, y: 0 })
 
   const { pings, addPing } = usePingSystem()
-  const { spotlight, lastPosition, toggleSpotlight } = useSpotlightSystem()
+  const { spotlight, lastPosition, toggleSpotlight, clearSpotlight } = useSpotlightSystem()
   const { state: ambienceState, toggleAmbience, setTrack } = useAmbienceSystem()
   const { currentSceneConfig, setScene } = useSceneSystem()
-  const { lights, addLight, removeLight } = useLightingSystem()
+  const { fogState, revealArea, restoreFog, isPositionRevealed, setBrushSize } = useFogSystem()
+  const { state: perspectiveState, setViewMode, setActiveTool } = usePerspectiveSystem()
   
   const [isAtmosphereMenuOpen, setIsAtmosphereMenuOpen] = useState(false)
   const [isSceneMenuOpen, setIsSceneMenuOpen] = useState(false)
+  const [fogAction, setFogAction] = useState<'reveal' | 'restore' | null>(null)
+  const [isSpacebarPressed, setIsSpacebarPressed] = useState(false)
+  const mapImageRef = useRef<HTMLImageElement>(null)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !e.repeat && (e.target as HTMLElement).tagName !== 'INPUT') {
+        setIsSpacebarPressed(true)
+      }
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setIsSpacebarPressed(false)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!fogAction) return
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!mapImageRef.current) return
+      const rect = mapImageRef.current.getBoundingClientRect()
+      const x = (e.clientX - rect.left) / mapScale
+      const y = (e.clientY - rect.top) / mapScale
+      
+      if (fogAction === 'reveal') revealArea({ x, y })
+      if (fogAction === 'restore') restoreFog({ x, y })
+    }
+
+    const handlePointerUp = () => setFogAction(null)
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [fogAction, mapScale, revealArea, restoreFog])
 
   useEffect(() => {
     if (!draggingTokenId) return
@@ -122,15 +170,18 @@ export function Battleground() {
         <div className="pointer-events-none absolute -inset-px rounded-xl bg-gradient-to-br from-amber-900/25 via-transparent to-amber-950/20 opacity-60 sm:rounded-2xl" />
 
         <div
-          className={`relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-amber-900/20 bg-[#08080a] shadow-[0_0_0_1px_rgba(0,0,0,0.8),0_32px_100px_-20px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(212,175,55,0.06)] sm:rounded-2xl ${isMapPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-subtle bg-[#08080a] shadow-cinematic-lg sm:rounded-2xl ${isMapPanning ? 'cursor-grabbing' : isSpacebarPressed || perspectiveState.activeTool === 'explore' ? 'cursor-grab' : 'cursor-crosshair'}`}
           onPointerDown={(e) => {
             if (e.button !== 0) return
             if ((e.target as HTMLElement).closest('.pointer-events-auto')) return
 
-            setIsMapPanning(true)
-            setSelectedTokenId(null)
-            mapPointerRef.current = { x: e.clientX, y: e.clientY }
-            e.preventDefault()
+            const effectiveTool = isSpacebarPressed ? 'explore' : perspectiveState.activeTool
+            if (effectiveTool === 'explore') {
+              setIsMapPanning(true)
+              setSelectedTokenId(null)
+              mapPointerRef.current = { x: e.clientX, y: e.clientY }
+              e.preventDefault()
+            }
           }}
           onWheel={(e) => {
             const zoomDelta = e.deltaY > 0 ? -0.15 : 0.15
@@ -139,27 +190,48 @@ export function Battleground() {
         >
           {/* Transform Wrapper for Map and Grid */}
           <div
-            className={`absolute inset-0 ${isMapPanning ? '' : 'transition-transform duration-300 ease-out'}`}
+            className={`absolute inset-0 ${isMapPanning ? '' : 'transition-cinematic'}`}
             style={{ transform: `translate(${mapPosition.x}px, ${mapPosition.y}px) scale(${mapScale})` }}
           >
             {/* Map Background */}
             <img
+              ref={mapImageRef}
               src={mapImage}
               alt="Battleground Map"
               className="absolute inset-0 h-full w-full object-cover"
+              onContextMenu={(e) => {
+                e.preventDefault()
+              }}
               onPointerDown={(e) => {
-                if (e.button === 0 && e.altKey) {
-                  e.stopPropagation()
-                  e.preventDefault()
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  const x = (e.clientX - rect.left) / mapScale
-                  const y = (e.clientY - rect.top) / mapScale
-                  
-                  if (e.shiftKey) {
-                    toggleSpotlight({ x, y })
-                  } else if (e.ctrlKey) {
-                    addLight({ x, y })
-                  } else {
+                const effectiveTool = isSpacebarPressed ? 'explore' : perspectiveState.activeTool
+                if (effectiveTool === 'explore') return
+
+                e.stopPropagation()
+                e.preventDefault()
+
+                const rect = e.currentTarget.getBoundingClientRect()
+                const x = (e.clientX - rect.left) / mapScale
+                const y = (e.clientY - rect.top) / mapScale
+
+                if (effectiveTool === 'fog') {
+                  if (e.button === 0) {
+                    if (e.altKey) {
+                      setFogAction('restore')
+                      restoreFog({ x, y })
+                    } else {
+                      setFogAction('reveal')
+                      revealArea({ x, y })
+                    }
+                  }
+                } else if (effectiveTool === 'spotlight') {
+                  if (e.button === 0) {
+                    if (e.altKey) clearSpotlight()
+                    else toggleSpotlight({ x, y })
+                  } else if (e.button === 2) {
+                    clearSpotlight()
+                  }
+                } else if (effectiveTool === 'ping') {
+                  if (e.button === 0) {
                     addPing({ x, y })
                   }
                 }
@@ -172,9 +244,11 @@ export function Battleground() {
               className="pointer-events-none absolute inset-0 bg-[length:48px_48px] bg-[linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)]"
             />
 
+            <FogOverlay isActive={fogState.isActive} revealedZones={fogState.revealedZones} viewMode={perspectiveState.viewMode} />
+
             {/* Spotlight Overlay */}
             <div 
-              className={`pointer-events-none absolute z-20 flex size-[6000px] items-center justify-center transition-[left,top,opacity,transform] ease-[cubic-bezier(0.2,1,0.2,1)] ${spotlight ? 'opacity-100' : 'opacity-0'}`}
+              className={`pointer-events-none absolute z-20 flex size-[6000px] items-center justify-center transition-cinematic ${spotlight ? 'opacity-100' : 'opacity-0'}`}
               style={{
                 left: spotlight?.position.x ?? lastPosition.x,
                 top: spotlight?.position.y ?? lastPosition.y,
@@ -185,54 +259,6 @@ export function Battleground() {
               }}
             />
 
-            {/* Dynamic Narrative Lighting */}
-            <div className="absolute inset-0 z-20 pointer-events-none" style={{ mixBlendMode: LIGHTING_CONFIG.defaultBlendMode as React.CSSProperties['mixBlendMode'] }}>
-              {lights.map(light => {
-                const preset = LIGHT_REGISTRY[light.presetId];
-                if (!preset) return null;
-                
-                return (
-                  <div
-                    key={light.id}
-                    className="absolute pointer-events-none"
-                    style={{
-                      left: light.position.x,
-                      top: light.position.y,
-                      width: preset.radius * 2,
-                      height: preset.radius * 2,
-                      marginLeft: -preset.radius,
-                      marginTop: -preset.radius,
-                      background: `radial-gradient(circle, ${preset.color} 0%, transparent 70%)`,
-                      animation: `light-flicker-${preset.flicker.speed} ${preset.flicker.speed === 'slow' ? '4s' : preset.flicker.speed === 'fast' ? '0.5s' : '2s'} infinite ease-in-out alternate`
-                    }}
-                  />
-                );
-              })}
-            </div>
-
-            {/* Lighting Interaction Layer */}
-            {lights.map(light => (
-              <div
-                key={`interaction-${light.id}`}
-                className="absolute z-20 size-16 pointer-events-auto cursor-pointer rounded-full border border-amber-500/0 bg-amber-500/0 transition-all duration-300 hover:border-amber-500/40 hover:bg-amber-500/10 hover:shadow-[0_0_20px_rgba(245,158,11,0.2)]"
-                style={{
-                  left: light.position.x,
-                  top: light.position.y,
-                  transform: `translate(-50%, -50%) scale(${1 / mapScale})`
-                }}
-                onPointerDown={(e) => {
-                  if (e.button === 2) {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    removeLight(light.id)
-                  }
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                }}
-              />
-            ))}
 
             {/* Spatial Pings */}
             {pings.map(ping => (
@@ -257,18 +283,27 @@ export function Battleground() {
 
             {/* Interactive Tokens */}
             {tokens.map(token => {
+              const isRevealed = fogState.isActive ? isPositionRevealed(token.position) : true;
+              const isPlayerHidden = perspectiveState.viewMode === 'player' && !isRevealed;
+              
+              // True concealment for players
+              if (isPlayerHidden) return null;
+
+              // GM intuitive visual feedback for hidden tokens
+              const gmDimmingClass = (perspectiveState.viewMode === 'gm' && !isRevealed) ? 'opacity-40 grayscale-[0.5]' : '';
+
               const isDragging = draggingTokenId === token.id
               const isSelected = selectedTokenId === token.id
 
               return (
                 <div
                   key={token.id}
-                  className={`group absolute flex flex-col items-center justify-center transition-all duration-300 ease-out z-40 ${isDragging
+                  className={`group absolute flex flex-col items-center justify-center transition-hover z-40 ${isDragging
                       ? 'cursor-grabbing scale-110 !z-50'
                       : isSelected
                         ? 'cursor-grab scale-[1.02]'
                         : 'cursor-grab hover:scale-[1.04]'
-                    }`}
+                    } ${gmDimmingClass}`}
                   style={{
                     left: token.position.x,
                     top: token.position.y,
@@ -285,7 +320,7 @@ export function Battleground() {
                 >
                   {/* Token Chip */}
                   <div
-                    className={`flex items-center justify-center size-12 rounded-full bg-gradient-to-br from-zinc-800 to-zinc-950 border transition-colors duration-300 ${isDragging
+                    className={`flex items-center justify-center size-12 rounded-full bg-gradient-to-br from-zinc-800 to-zinc-950 border transition-hover ${isDragging
                         ? 'border-amber-300 shadow-[0_20px_40px_rgba(0,0,0,0.9),0_0_30px_rgba(217,119,6,0.5)] ring-2 ring-amber-400/50'
                         : isSelected
                           ? 'border-amber-400 shadow-[0_12px_24px_rgba(0,0,0,0.8),0_0_20px_rgba(217,119,6,0.4)] ring-2 ring-amber-500/40'
@@ -300,7 +335,7 @@ export function Battleground() {
                   </div>
 
                   {/* Name Label */}
-                  <span className={`absolute -bottom-7 px-2 py-0.5 rounded border bg-zinc-950/90 text-[10px] font-medium tracking-wide shadow-[0_4px_12px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all duration-300 ${isSelected
+                  <span className={`absolute -bottom-7 px-2 py-0.5 rounded border bg-zinc-950/90 text-[10px] font-medium tracking-wide shadow-cinematic-sm blur-ambient-sm transition-hover ${isSelected
                       ? 'border-amber-500/40 text-amber-200'
                       : 'border-zinc-800/60 text-zinc-400 opacity-0 group-hover:opacity-100'
                     }`}>
@@ -321,11 +356,20 @@ export function Battleground() {
           {/* Atmospheric Vignette & Depth Layers */}
           <div
             aria-hidden
-            className="absolute inset-0 bg-black pointer-events-none transition-opacity ease-[cubic-bezier(0.2,1,0.2,1)]"
+            className="absolute inset-0 bg-black pointer-events-none transition-cinematic"
             style={{ 
               opacity: currentSceneConfig.baseDarkness,
               transitionDuration: `${currentSceneConfig.transitionDurationMs}ms` 
             }}
+          />
+          
+          {/* HUD Layer */}
+          <NarrativeToolbar 
+            state={perspectiveState} 
+            fogState={fogState}
+            onToolSelect={setActiveTool} 
+            onViewSelect={setViewMode}
+            onFogBrushSelect={setBrushSize}
           />
           <div
             aria-hidden
@@ -345,7 +389,7 @@ export function Battleground() {
             <div className="pointer-events-auto relative flex flex-col gap-2">
               {/* Atmosphere Popover */}
               {isAtmosphereMenuOpen && (
-                <div className="absolute bottom-full mb-2 left-0 w-48 overflow-hidden rounded-xl border border-amber-900/20 bg-zinc-950/80 p-1 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-md">
+                <div className="absolute bottom-full mb-2 left-0 w-48 overflow-hidden rounded-xl border border-subtle bg-zinc-950/80 p-1 shadow-cinematic-md blur-ambient-md">
                   <div className="mb-1 flex items-center justify-between px-2 py-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500/70">Atmosfera</span>
                     <button 
@@ -355,8 +399,8 @@ export function Battleground() {
                       }}
                       className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border transition-colors ${
                         ambienceState.isActive 
-                          ? 'border-amber-500/40 text-amber-400 bg-amber-950/40' 
-                          : 'border-zinc-700 text-zinc-500 hover:border-amber-700/50 hover:text-amber-200/70'
+                          ? 'border-focus text-amber-400 bg-amber-950/40' 
+                          : 'border-subtle text-zinc-500 hover:border-amber-700/50 hover:text-amber-200/70'
                       }`}
                     >
                       {ambienceState.isActive ? 'Ligado' : 'Desligado'}
@@ -371,7 +415,7 @@ export function Battleground() {
                         <button
                           key={track.id}
                           onClick={() => setTrack(track.id)}
-                          className={`flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                          className={`flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-hover ${
                             isSelected && ambienceState.isActive
                               ? 'bg-amber-900/20 text-amber-200'
                               : 'text-zinc-400 hover:bg-zinc-900/60 hover:text-amber-100'
@@ -402,13 +446,13 @@ export function Battleground() {
                 activeIds={ambienceState.isActive ? ['atmosphere'] : []} 
               />
               <div className="flex gap-1.5">
-                <span className="rounded border border-amber-900/25 bg-zinc-950/70 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-amber-200/35 backdrop-blur-md">
+                <span className="rounded border border-subtle bg-zinc-950/70 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-amber-200/35 blur-ambient-md">
                   Grade · 1,5 m
                 </span>
                 <div className="relative hidden sm:block">
                   {/* Scene Popover */}
                   {isSceneMenuOpen && (
-                    <div className="absolute bottom-full mb-2 left-0 w-40 overflow-hidden rounded-xl border border-amber-900/20 bg-zinc-950/80 p-1 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-md">
+                    <div className="absolute bottom-full mb-2 left-0 w-40 overflow-hidden rounded-xl border border-subtle bg-zinc-950/80 p-1 shadow-cinematic-md blur-ambient-md">
                       <div className="mb-1 px-2 py-1.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500/70">Atmosfera Narrativa</span>
                       </div>
@@ -422,7 +466,7 @@ export function Battleground() {
                                 setScene(scene.id)
                                 setIsSceneMenuOpen(false)
                               }}
-                              className={`flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                              className={`flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-hover ${
                                 isSelected
                                   ? 'bg-amber-900/20 text-amber-200'
                                   : 'text-zinc-400 hover:bg-zinc-900/60 hover:text-amber-100'
@@ -441,14 +485,14 @@ export function Battleground() {
                   
                   <button
                     onClick={() => setIsSceneMenuOpen(prev => !prev)}
-                    className="rounded border border-zinc-800/45 bg-zinc-950/65 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-zinc-400 transition-colors hover:border-amber-900/40 hover:text-amber-200 backdrop-blur-md"
+                    className="rounded border border-subtle bg-zinc-950/65 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-zinc-400 transition-hover hover:border-focus hover:text-amber-200 blur-ambient-md"
                   >
                     Cena · {currentSceneConfig.name}
                   </button>
                 </div>
               </div>
             </div>
-            <span className="rounded border border-amber-900/25 bg-zinc-950/70 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-amber-200/45 backdrop-blur-md">
+            <span className="rounded border border-subtle bg-zinc-950/70 px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-amber-200/45 blur-ambient-md">
               Rodada 3
             </span>
           </div>

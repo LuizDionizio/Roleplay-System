@@ -38,13 +38,13 @@ export function Sidebar({ open, setOpen }: { open: boolean, setOpen: (open: bool
 
   return (
     <aside
-      className={`relative z-20 flex shrink-0 flex-col transition-[width,transform,opacity] duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] ${
+      className={`relative z-20 flex shrink-0 flex-col transition-cinematic ${
         open ? 'w-[var(--sidebar-width)] translate-x-0 opacity-100' : 'w-0 translate-x-full opacity-0 sm:w-2 sm:translate-x-0 sm:opacity-100'
       }`}
       style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
     >
       <div
-        className={`absolute inset-y-0 right-0 flex w-[var(--sidebar-width)] flex-col border-l border-amber-900/20 bg-zinc-950/80 p-3 shadow-2xl backdrop-blur-xl transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] sm:p-4 ${
+        className={`absolute inset-y-0 right-0 flex w-[var(--sidebar-width)] flex-col border-l border-subtle bg-zinc-950/80 p-3 shadow-cinematic-lg blur-ambient-md transition-cinematic sm:p-4 ${
           open ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
         }`}
       >
@@ -60,7 +60,7 @@ export function Sidebar({ open, setOpen }: { open: boolean, setOpen: (open: bool
           <button
             onClick={() => setOpen(false)}
             aria-label="Recolher painel"
-            className="group flex size-6 items-center justify-center rounded hover:bg-white/5"
+            className="group flex size-6 items-center justify-center rounded transition-hover hover:bg-white/5"
           >
             <ChevronIcon direction="right" className="text-amber-700/50 group-hover:text-amber-500" />
           </button>
@@ -69,7 +69,7 @@ export function Sidebar({ open, setOpen }: { open: boolean, setOpen: (open: bool
           {PLAYERS.map((player, i) => (
             <div
               key={i}
-              className="group relative flex cursor-pointer items-center gap-3 rounded-lg border border-amber-900/10 bg-zinc-900/40 p-2.5 transition-colors hover:border-amber-900/30 hover:bg-zinc-900/60"
+              className="group relative flex cursor-pointer items-center gap-3 rounded-lg border border-subtle bg-zinc-900/40 p-2.5 transition-hover hover:border-focus hover:bg-zinc-900/60"
             >
               <div className="relative flex size-10 shrink-0 items-center justify-center rounded-md bg-zinc-800 font-medium text-zinc-400 shadow-inner">
                 {player.initials}
@@ -109,17 +109,17 @@ export function Sidebar({ open, setOpen }: { open: boolean, setOpen: (open: bool
         onClick={() => setOpen(true)}
         aria-label="Expandir painel"
         aria-expanded={open}
-        className={`group absolute inset-y-0 right-0 hidden w-2 items-center justify-center border-l border-amber-900/20 bg-zinc-950/80 transition-all duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] hover:w-4 hover:bg-zinc-900/90 hover:shadow-[0_0_15px_rgba(212,175,55,0.1)] sm:flex ${
+        className={`group absolute inset-y-0 right-0 hidden w-2 items-center justify-center border-l border-subtle bg-zinc-950/80 transition-cinematic hover:w-4 hover:bg-zinc-900/90 hover:shadow-glow-subtle sm:flex ${
           open ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'
         }`}
       >
-        <ChevronIcon direction="left" className="text-amber-700/30 transition-transform duration-300 group-hover:scale-110 group-hover:text-amber-500" />
+        <ChevronIcon direction="left" className="text-amber-700/30 transition-hover group-hover:scale-110 group-hover:text-amber-500" />
       </button>
 
       {/* Mobile Swipe Tab */}
       <button
         onClick={() => setOpen((p) => !p)}
-        className={`absolute -left-6 top-1/2 flex h-16 w-6 -translate-y-1/2 items-center justify-center rounded-l-lg border-y border-l border-amber-900/20 bg-zinc-950/90 shadow-lg backdrop-blur-md transition-opacity sm:hidden ${
+        className={`absolute -left-6 top-1/2 flex h-16 w-6 -translate-y-1/2 items-center justify-center rounded-l-lg border-y border-l border-subtle bg-zinc-950/90 shadow-cinematic-md blur-ambient-md transition-cinematic sm:hidden ${
           open ? 'opacity-0' : 'opacity-100'
         }`}
       >
