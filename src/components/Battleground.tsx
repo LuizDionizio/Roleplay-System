@@ -12,6 +12,8 @@ import { useFogSystem } from '../systems/fog/fogSystem'
 import { FogOverlay } from '../systems/fog/FogOverlay'
 import { usePerspectiveSystem } from '../systems/perspective/perspectiveSystem'
 import { NarrativeToolbar } from './tools/NarrativeToolbar'
+import { useEnvironmentSystem } from '../systems/environment/environmentSystem'
+import { getVignetteStyles } from '../systems/environment/cinematicEffects'
 
 function MapCorner({ className }: { className: string }) {
   return (
@@ -46,6 +48,7 @@ export function Battleground() {
   const { currentSceneConfig, setScene } = useSceneSystem()
   const { fogState, revealArea, restoreFog, isPositionRevealed, setBrushSize } = useFogSystem()
   const { state: perspectiveState, setViewMode, setActiveTool } = usePerspectiveSystem()
+  const { environmentalConfig } = useEnvironmentSystem()
   
   const [isAtmosphereMenuOpen, setIsAtmosphereMenuOpen] = useState(false)
   const [isSceneMenuOpen, setIsSceneMenuOpen] = useState(false)
@@ -162,6 +165,10 @@ export function Battleground() {
       }
     }
   }
+
+  // Deepen the vignette specifically when dragging a token to simulate focus/depth
+  const isFocusing = draggingTokenId !== null
+  const vignetteStyles = getVignetteStyles(environmentalConfig, isFocusing)
 
   return (
     <section className="relative flex min-h-0 flex-1 flex-col p-2 sm:p-3 lg:pr-1.5">
@@ -299,10 +306,10 @@ export function Battleground() {
                 <div
                   key={token.id}
                   className={`group absolute flex flex-col items-center justify-center transition-hover z-40 ${isDragging
-                      ? 'cursor-grabbing scale-110 !z-50'
+                      ? 'cursor-grabbing scale-110 drop-shadow-2xl !z-50'
                       : isSelected
-                        ? 'cursor-grab scale-[1.02]'
-                        : 'cursor-grab hover:scale-[1.04]'
+                        ? 'cursor-grab scale-[1.02] drop-shadow-xl'
+                        : 'cursor-grab hover:scale-[1.04] drop-shadow-md hover:drop-shadow-xl'
                     } ${gmDimmingClass}`}
                   style={{
                     left: token.position.x,
@@ -356,11 +363,8 @@ export function Battleground() {
           {/* Atmospheric Vignette & Depth Layers */}
           <div
             aria-hidden
-            className="absolute inset-0 bg-black pointer-events-none transition-cinematic"
-            style={{ 
-              opacity: currentSceneConfig.baseDarkness,
-              transitionDuration: `${currentSceneConfig.transitionDurationMs}ms` 
-            }}
+            className="absolute inset-0 pointer-events-none mix-blend-multiply"
+            style={vignetteStyles}
           />
           
           {/* HUD Layer */}
@@ -371,6 +375,7 @@ export function Battleground() {
             onViewSelect={setViewMode}
             onFogBrushSelect={setBrushSize}
           />
+
           <div
             aria-hidden
             className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,transparent_50%,rgba(8,8,10,0.2)_75%,rgba(8,8,10,0.85)_100%)] pointer-events-none"

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { RevealZone, WorldPosition, FogState, FogBrushSize } from './types';
+import type { WorldPosition, FogState, FogBrushSize } from './types';
 
 const BRUSH_RADII: Record<FogBrushSize, number> = {
   small: 150,
