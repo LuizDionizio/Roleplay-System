@@ -1,19 +1,35 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import mapImage from '../assets/mapa.jpg'
 import { PanelGlow } from './ui/PanelGlow'
 import { MapToolbar } from './MapToolbar'
 import { usePingSystem } from '../systems/spatial/pingSystem'
-import { useSpotlightSystem, SPOTLIGHT_CONFIG } from '../systems/spatial/spotlightSystem'
+import { useSpotlightSystem } from '../systems/spatial/spotlightSystem'
 import { useAmbienceSystem } from '../systems/atmosphere/ambienceSystem'
 import { AMBIENCE_REGISTRY } from '../systems/atmosphere/ambienceRegistry'
 import { useSceneSystem } from '../systems/narrative/sceneSystem'
 import { SCENE_REGISTRY } from '../systems/narrative/sceneRegistry'
 import { useFogSystem } from '../systems/fog/fogSystem'
-import { FogOverlay } from '../systems/fog/FogOverlay'
 import { usePerspectiveSystem } from '../systems/perspective/perspectiveSystem'
 import { NarrativeToolbar } from './tools/NarrativeToolbar'
 import { useEnvironmentSystem } from '../systems/environment/environmentSystem'
 import { getVignetteStyles } from '../systems/environment/cinematicEffects'
+
+// Consolidate spatial layers and calculations
+import { MapLayer } from './battleground/MapLayer'
+import { FogLayer } from './battleground/FogLayer'
+import { SpotlightLayer } from './battleground/SpotlightLayer'
+import { PingLayer } from './battleground/PingLayer'
+import { TokenLayer } from './battleground/TokenLayer'
+import { EnvironmentLayer } from './battleground/EnvironmentLayer'
+import {
+  constrainPan,
+  constrainScale,
+  calculateZoom,
+} from '../core/spatial/helpers'
+
+// Interaction context
+import { InteractionProvider, useInteraction } from '../core/interaction/interactionContext'
+import type { WorldPosition } from '../core/spatial/types'
 
 function MapCorner({ className }: { className: string }) {
   return (
@@ -33,14 +49,7 @@ const INITIAL_TOKENS = [
 export function Battleground() {
   const [mapScale, setMapScale] = useState(1)
   const [mapPosition, setMapPosition] = useState({ x: 0, y: 0 })
-  const [isMapPanning, setIsMapPanning] = useState(false)
-  const mapPointerRef = useRef({ x: 0, y: 0 })
-
-  // Token state
   const [tokens, setTokens] = useState(INITIAL_TOKENS)
-  const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null)
-  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null)
-  const tokenPointerRef = useRef({ x: 0, y: 0 })
 
   const { pings, addPing } = usePingSystem()
   const { spotlight, lastPosition, toggleSpotlight, clearSpotlight } = useSpotlightSystem()
@@ -52,108 +61,150 @@ export function Battleground() {
   
   const [isAtmosphereMenuOpen, setIsAtmosphereMenuOpen] = useState(false)
   const [isSceneMenuOpen, setIsSceneMenuOpen] = useState(false)
-  const [fogAction, setFogAction] = useState<'reveal' | 'restore' | null>(null)
-  const [isSpacebarPressed, setIsSpacebarPressed] = useState(false)
-  const mapImageRef = useRef<HTMLImageElement>(null)
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !e.repeat && (e.target as HTMLElement).tagName !== 'INPUT') {
-        setIsSpacebarPressed(true)
-      }
-    }
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') setIsSpacebarPressed(false)
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-    }
+  // Interaction handlers
+  const handlePan = useCallback((dx: number, dy: number) => {
+    setMapPosition(pos => constrainPan({ x: pos.x + dx, y: pos.y + dy }))
   }, [])
 
+  const handleZoom = useCallback((deltaY: number) => {
+    setMapScale(s => calculateZoom(s, deltaY))
+  }, [])
+
+  const handleTokenDragMove = useCallback((tokenId: string, dx: number, dy: number) => {
+    setTokens(prev => prev.map(t =>
+      t.id === tokenId ? { ...t, position: { x: t.position.x + dx, y: t.position.y + dy } } : t
+    ))
+  }, [])
+
+  const handleFogStroke = useCallback((position: WorldPosition, action: 'reveal' | 'restore') => {
+    if (action === 'reveal') {
+      revealArea(position)
+    } else {
+      restoreFog(position)
+    }
+  }, [revealArea, restoreFog])
+
+  const handleFogStrokeEnd = useCallback(() => {}, [])
+
+  const handlePing = useCallback((position: WorldPosition) => {
+    addPing(position)
+  }, [addPing])
+
+  const handleSpotlight = useCallback((position: WorldPosition, isAltPressed: boolean, isRightClick: boolean) => {
+    if (isRightClick || isAltPressed) {
+      clearSpotlight()
+    } else {
+      toggleSpotlight(position)
+    }
+  }, [clearSpotlight, toggleSpotlight])
+
+  return (
+    <InteractionProvider
+      activeTool={perspectiveState.activeTool}
+      mapScale={mapScale}
+      onPan={handlePan}
+      onZoom={handleZoom}
+      onTokenDragMove={handleTokenDragMove}
+      onFogStrokeStart={handleFogStroke}
+      onFogStrokeMove={handleFogStroke}
+      onFogStrokeEnd={handleFogStrokeEnd}
+      onPing={handlePing}
+      onSpotlight={handleSpotlight}
+    >
+      <BattlegroundContent
+        mapScale={mapScale}
+        setMapScale={setMapScale}
+        mapPosition={mapPosition}
+        setMapPosition={setMapPosition}
+        tokens={tokens}
+        pings={pings}
+        spotlight={spotlight}
+        lastPosition={lastPosition}
+        currentSceneConfig={currentSceneConfig}
+        setScene={setScene}
+        fogState={fogState}
+        isPositionRevealed={isPositionRevealed}
+        setBrushSize={setBrushSize}
+        perspectiveState={perspectiveState}
+        setViewMode={setViewMode}
+        setActiveTool={setActiveTool}
+        ambienceState={ambienceState}
+        toggleAmbience={toggleAmbience}
+        setTrack={setTrack}
+        environmentalConfig={environmentalConfig}
+        isAtmosphereMenuOpen={isAtmosphereMenuOpen}
+        setIsAtmosphereMenuOpen={setIsAtmosphereMenuOpen}
+        isSceneMenuOpen={isSceneMenuOpen}
+        setIsSceneMenuOpen={setIsSceneMenuOpen}
+      />
+    </InteractionProvider>
+  )
+}
+
+interface BattlegroundContentProps {
+  mapScale: number
+  setMapScale: React.Dispatch<React.SetStateAction<number>>
+  mapPosition: { x: number; y: number }
+  setMapPosition: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>
+  tokens: typeof INITIAL_TOKENS
+  pings: ReturnType<typeof usePingSystem>['pings']
+  spotlight: ReturnType<typeof useSpotlightSystem>['spotlight']
+  lastPosition: WorldPosition
+  currentSceneConfig: ReturnType<typeof useSceneSystem>['currentSceneConfig']
+  setScene: ReturnType<typeof useSceneSystem>['setScene']
+  fogState: ReturnType<typeof useFogSystem>['fogState']
+  isPositionRevealed: ReturnType<typeof useFogSystem>['isPositionRevealed']
+  setBrushSize: ReturnType<typeof useFogSystem>['setBrushSize']
+  perspectiveState: ReturnType<typeof usePerspectiveSystem>['state']
+  setViewMode: ReturnType<typeof usePerspectiveSystem>['setViewMode']
+  setActiveTool: ReturnType<typeof usePerspectiveSystem>['setActiveTool']
+  ambienceState: ReturnType<typeof useAmbienceSystem>['state']
+  toggleAmbience: ReturnType<typeof useAmbienceSystem>['toggleAmbience']
+  setTrack: ReturnType<typeof useAmbienceSystem>['setTrack']
+  environmentalConfig: ReturnType<typeof useEnvironmentSystem>['environmentalConfig']
+  isAtmosphereMenuOpen: boolean
+  setIsAtmosphereMenuOpen: React.Dispatch<React.SetStateAction<boolean>>
+  isSceneMenuOpen: boolean
+  setIsSceneMenuOpen: React.Dispatch<React.SetStateAction<boolean>>
+}
+
+function BattlegroundContent({
+  mapScale,
+  setMapScale,
+  mapPosition,
+  setMapPosition,
+  tokens,
+  pings,
+  spotlight,
+  lastPosition,
+  currentSceneConfig,
+  setScene,
+  fogState,
+  isPositionRevealed,
+  setBrushSize,
+  perspectiveState,
+  setViewMode,
+  setActiveTool,
+  ambienceState,
+  toggleAmbience,
+  setTrack,
+  environmentalConfig,
+  isAtmosphereMenuOpen,
+  setIsAtmosphereMenuOpen,
+  isSceneMenuOpen,
+  setIsSceneMenuOpen,
+}: BattlegroundContentProps) {
+  const { isSpacePressed, draggingTokenId, registerMapContainerRef } = useInteraction()
+  const containerRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
-    if (!fogAction) return
-
-    const handlePointerMove = (e: PointerEvent) => {
-      if (!mapImageRef.current) return
-      const rect = mapImageRef.current.getBoundingClientRect()
-      const x = (e.clientX - rect.left) / mapScale
-      const y = (e.clientY - rect.top) / mapScale
-      
-      if (fogAction === 'reveal') revealArea({ x, y })
-      if (fogAction === 'restore') restoreFog({ x, y })
-    }
-
-    const handlePointerUp = () => setFogAction(null)
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-    }
-  }, [fogAction, mapScale, revealArea, restoreFog])
-
-  useEffect(() => {
-    if (!draggingTokenId) return
-
-    const handleTokenMove = (e: PointerEvent) => {
-      const dx = (e.clientX - tokenPointerRef.current.x) / mapScale
-      const dy = (e.clientY - tokenPointerRef.current.y) / mapScale
-
-      setTokens(prev => prev.map(t =>
-        t.id === draggingTokenId ? { ...t, position: { x: t.position.x + dx, y: t.position.y + dy } } : t
-      ))
-      tokenPointerRef.current = { x: e.clientX, y: e.clientY }
-    }
-
-    const handleTokenUp = () => setDraggingTokenId(null)
-
-    window.addEventListener('pointermove', handleTokenMove)
-    window.addEventListener('pointerup', handleTokenUp)
-
-    return () => {
-      window.removeEventListener('pointermove', handleTokenMove)
-      window.removeEventListener('pointerup', handleTokenUp)
-    }
-  }, [draggingTokenId, mapScale])
-
-  useEffect(() => {
-    if (!isMapPanning) return
-
-    const handleMapPointerMove = (e: PointerEvent) => {
-      const dx = e.clientX - mapPointerRef.current.x
-      const dy = e.clientY - mapPointerRef.current.y
-
-      setMapPosition((pos) => {
-        const newX = Math.max(-1500, Math.min(pos.x + dx, 1500))
-        const newY = Math.max(-1500, Math.min(pos.y + dy, 1500))
-        return { x: newX, y: newY }
-      })
-
-      mapPointerRef.current = { x: e.clientX, y: e.clientY }
-    }
-
-    const handleMapPointerUp = () => {
-      setIsMapPanning(false)
-    }
-
-    window.addEventListener('pointermove', handleMapPointerMove)
-    window.addEventListener('pointerup', handleMapPointerUp)
-
-    return () => {
-      window.removeEventListener('pointermove', handleMapPointerMove)
-      window.removeEventListener('pointerup', handleMapPointerUp)
-    }
-  }, [isMapPanning])
+    registerMapContainerRef(containerRef)
+  }, [registerMapContainerRef])
 
   const handleMapAction = (action: string) => {
-    if (action === 'zoom-in') setMapScale(s => Math.min(s + 0.25, 3))
-    if (action === 'zoom-out') setMapScale(s => Math.max(0.5, s - 0.25))
+    if (action === 'zoom-in') setMapScale(s => constrainScale(s + 0.25))
+    if (action === 'zoom-out') setMapScale(s => constrainScale(s - 0.25))
     if (action === 'zoom-reset') {
       setMapScale(1)
       setMapPosition({ x: 0, y: 0 })
@@ -168,7 +219,13 @@ export function Battleground() {
 
   // Deepen the vignette specifically when dragging a token to simulate focus/depth
   const isFocusing = draggingTokenId !== null
-  const vignetteStyles = getVignetteStyles(environmentalConfig, isFocusing)
+  const vignetteStyles = useMemo(() => getVignetteStyles(environmentalConfig, isFocusing), [environmentalConfig, isFocusing])
+
+  const cursorClass = draggingTokenId 
+    ? 'cursor-grabbing' 
+    : isSpacePressed || perspectiveState.activeTool === 'explore' 
+      ? 'cursor-grab' 
+      : 'cursor-crosshair'
 
   return (
     <section className="relative flex min-h-0 flex-1 flex-col p-2 sm:p-3 lg:pr-1.5">
@@ -177,180 +234,33 @@ export function Battleground() {
         <div className="pointer-events-none absolute -inset-px rounded-xl bg-gradient-to-br from-amber-900/25 via-transparent to-amber-950/20 opacity-60 sm:rounded-2xl" />
 
         <div
-          className={`relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-subtle bg-[#08080a] shadow-cinematic-lg sm:rounded-2xl ${isMapPanning ? 'cursor-grabbing' : isSpacebarPressed || perspectiveState.activeTool === 'explore' ? 'cursor-grab' : 'cursor-crosshair'}`}
-          onPointerDown={(e) => {
-            if (e.button !== 0) return
-            if ((e.target as HTMLElement).closest('.pointer-events-auto')) return
-
-            const effectiveTool = isSpacebarPressed ? 'explore' : perspectiveState.activeTool
-            if (effectiveTool === 'explore') {
-              setIsMapPanning(true)
-              setSelectedTokenId(null)
-              mapPointerRef.current = { x: e.clientX, y: e.clientY }
-              e.preventDefault()
-            }
-          }}
-          onWheel={(e) => {
-            const zoomDelta = e.deltaY > 0 ? -0.15 : 0.15
-            setMapScale((s) => Math.max(0.5, Math.min(s + zoomDelta, 3)))
-          }}
+          ref={containerRef}
+          className={`relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-subtle bg-[#08080a] shadow-cinematic-lg sm:rounded-2xl ${cursorClass}`}
         >
           {/* Transform Wrapper for Map and Grid */}
           <div
-            className={`absolute inset-0 ${isMapPanning ? '' : 'transition-cinematic'}`}
+            className={`absolute inset-0 ${draggingTokenId ? '' : 'transition-cinematic'}`}
             style={{ transform: `translate(${mapPosition.x}px, ${mapPosition.y}px) scale(${mapScale})` }}
           >
-            {/* Map Background */}
-            <img
-              ref={mapImageRef}
-              src={mapImage}
-              alt="Battleground Map"
-              className="absolute inset-0 h-full w-full object-cover"
-              onContextMenu={(e) => {
-                e.preventDefault()
-              }}
-              onPointerDown={(e) => {
-                const effectiveTool = isSpacebarPressed ? 'explore' : perspectiveState.activeTool
-                if (effectiveTool === 'explore') return
+            <MapLayer mapImage={mapImage} />
 
-                e.stopPropagation()
-                e.preventDefault()
+            <FogLayer fogState={fogState} perspectiveState={perspectiveState} />
 
-                const rect = e.currentTarget.getBoundingClientRect()
-                const x = (e.clientX - rect.left) / mapScale
-                const y = (e.clientY - rect.top) / mapScale
-
-                if (effectiveTool === 'fog') {
-                  if (e.button === 0) {
-                    if (e.altKey) {
-                      setFogAction('restore')
-                      restoreFog({ x, y })
-                    } else {
-                      setFogAction('reveal')
-                      revealArea({ x, y })
-                    }
-                  }
-                } else if (effectiveTool === 'spotlight') {
-                  if (e.button === 0) {
-                    if (e.altKey) clearSpotlight()
-                    else toggleSpotlight({ x, y })
-                  } else if (e.button === 2) {
-                    clearSpotlight()
-                  }
-                } else if (effectiveTool === 'ping') {
-                  if (e.button === 0) {
-                    addPing({ x, y })
-                  }
-                }
-              }}
+            <SpotlightLayer
+              spotlight={spotlight}
+              lastPosition={lastPosition}
+              spotlightScale={currentSceneConfig.spotlightScale}
+              transitionDurationMs={currentSceneConfig.transitionDurationMs}
             />
 
-            {/* Tabletop Grid Overlay */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 bg-[length:48px_48px] bg-[linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)]"
+            <PingLayer pings={pings} />
+
+            <TokenLayer
+              tokens={tokens}
+              fogState={fogState}
+              isPositionRevealed={isPositionRevealed}
+              perspectiveState={perspectiveState}
             />
-
-            <FogOverlay isActive={fogState.isActive} revealedZones={fogState.revealedZones} viewMode={perspectiveState.viewMode} />
-
-            {/* Spotlight Overlay */}
-            <div 
-              className={`pointer-events-none absolute z-20 flex size-[6000px] items-center justify-center transition-cinematic ${spotlight ? 'opacity-100' : 'opacity-0'}`}
-              style={{
-                left: spotlight?.position.x ?? lastPosition.x,
-                top: spotlight?.position.y ?? lastPosition.y,
-                transform: `translate(-50%, -50%) scale(${currentSceneConfig.spotlightScale})`,
-                transitionDuration: `1000ms, 1000ms, 1000ms, ${currentSceneConfig.transitionDurationMs}ms`,
-                transitionProperty: 'left, top, opacity, transform',
-                background: `radial-gradient(circle ${SPOTLIGHT_CONFIG.defaultRadius}px at center, transparent 0%, rgba(12,10,8,0.15) 30%, rgba(8,8,10,0.7) 70%, rgba(8,8,10,0.9) 100%)`
-              }}
-            />
-
-
-            {/* Spatial Pings */}
-            {pings.map(ping => (
-              <div
-                key={ping.id}
-                className="pointer-events-none absolute z-30 flex items-center justify-center"
-                style={{
-                  left: ping.position.x,
-                  top: ping.position.y,
-                  transform: 'translate(-50%, -50%)',
-                }}
-              >
-                {/* Expanding ripples */}
-                <div className="absolute size-16 rounded-full border-2 border-amber-500/80 animate-[ping_1.5s_cubic-bezier(0,0,0.2,1)_infinite]" />
-                <div className="absolute size-16 rounded-full border border-amber-400/60 animate-[ping_1.5s_cubic-bezier(0,0,0.2,1)_infinite]" style={{ animationDelay: '400ms' }} />
-
-                {/* Core glow */}
-                <div className="absolute size-3 rounded-full bg-amber-400 shadow-[0_0_15px_4px_rgba(251,191,36,0.6)] animate-pulse" />
-                <div className="absolute size-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
-              </div>
-            ))}
-
-            {/* Interactive Tokens */}
-            {tokens.map(token => {
-              const isRevealed = fogState.isActive ? isPositionRevealed(token.position) : true;
-              const isPlayerHidden = perspectiveState.viewMode === 'player' && !isRevealed;
-              
-              // True concealment for players
-              if (isPlayerHidden) return null;
-
-              // GM intuitive visual feedback for hidden tokens
-              const gmDimmingClass = (perspectiveState.viewMode === 'gm' && !isRevealed) ? 'opacity-40 grayscale-[0.5]' : '';
-
-              const isDragging = draggingTokenId === token.id
-              const isSelected = selectedTokenId === token.id
-
-              return (
-                <div
-                  key={token.id}
-                  className={`group absolute flex flex-col items-center justify-center transition-hover z-40 ${isDragging
-                      ? 'cursor-grabbing scale-110 drop-shadow-2xl !z-50'
-                      : isSelected
-                        ? 'cursor-grab scale-[1.02] drop-shadow-xl'
-                        : 'cursor-grab hover:scale-[1.04] drop-shadow-md hover:drop-shadow-xl'
-                    } ${gmDimmingClass}`}
-                  style={{
-                    left: token.position.x,
-                    top: token.position.y,
-                    transform: 'translate(-50%, -50%)'
-                  }}
-                  onPointerDown={(e) => {
-                    if (e.button !== 0) return
-                    e.stopPropagation() // Prevent map panning
-                    setDraggingTokenId(token.id)
-                    setSelectedTokenId(token.id)
-                    tokenPointerRef.current = { x: e.clientX, y: e.clientY }
-                    e.preventDefault()
-                  }}
-                >
-                  {/* Token Chip */}
-                  <div
-                    className={`flex items-center justify-center size-12 rounded-full bg-gradient-to-br from-zinc-800 to-zinc-950 border transition-hover ${isDragging
-                        ? 'border-amber-300 shadow-[0_20px_40px_rgba(0,0,0,0.9),0_0_30px_rgba(217,119,6,0.5)] ring-2 ring-amber-400/50'
-                        : isSelected
-                          ? 'border-amber-400 shadow-[0_12px_24px_rgba(0,0,0,0.8),0_0_20px_rgba(217,119,6,0.4)] ring-2 ring-amber-500/40'
-                          : 'border-amber-700/80 shadow-[0_6px_12px_rgba(0,0,0,0.6),inset_0_2px_4px_rgba(255,255,255,0.1)] ring-1 ring-amber-900/50 group-hover:border-amber-500 group-hover:shadow-[0_8px_16px_rgba(0,0,0,0.7)]'
-                      }`}
-                  >
-                    <div className="flex size-full items-center justify-center rounded-full border border-amber-900/30 bg-zinc-900/80 backdrop-blur-sm">
-                      <span className={`text-sm font-bold tracking-wider drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] ${token.color}`}>
-                        {token.initials}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Name Label */}
-                  <span className={`absolute -bottom-7 px-2 py-0.5 rounded border bg-zinc-950/90 text-[10px] font-medium tracking-wide shadow-cinematic-sm blur-ambient-sm transition-hover ${isSelected
-                      ? 'border-amber-500/40 text-amber-200'
-                      : 'border-zinc-800/60 text-zinc-400 opacity-0 group-hover:opacity-100'
-                    }`}>
-                    {token.name}
-                  </span>
-                </div>
-              )
-            })}
           </div>
 
           <PanelGlow />
@@ -360,12 +270,7 @@ export function Battleground() {
           <MapCorner className="bottom-2.5 left-2.5 border-b-2 border-l-2 sm:bottom-3 sm:left-3" />
           <MapCorner className="bottom-2.5 right-2.5 border-b-2 border-r-2 sm:bottom-3 sm:right-3" />
 
-          {/* Atmospheric Vignette & Depth Layers */}
-          <div
-            aria-hidden
-            className="absolute inset-0 pointer-events-none mix-blend-multiply"
-            style={vignetteStyles}
-          />
+          <EnvironmentLayer vignetteStyles={vignetteStyles} />
           
           {/* HUD Layer */}
           <NarrativeToolbar 
@@ -374,19 +279,6 @@ export function Battleground() {
             onToolSelect={setActiveTool} 
             onViewSelect={setViewMode}
             onFogBrushSelect={setBrushSize}
-          />
-
-          <div
-            aria-hidden
-            className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,transparent_50%,rgba(8,8,10,0.2)_75%,rgba(8,8,10,0.85)_100%)] pointer-events-none"
-          />
-          <div
-            aria-hidden
-            className="absolute inset-0 bg-[linear-gradient(180deg,rgba(12,10,8,0.4)_0%,transparent_10%,transparent_90%,rgba(8,8,10,0.6)_100%)] pointer-events-none"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 shadow-[inset_0_0_120px_rgba(0,0,0,0.4)]"
           />
 
           {/* Map HUD */}

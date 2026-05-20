@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { PerspectiveState, ToolMode, ViewMode } from '../../systems/perspective/types';
 import type { FogState, FogBrushSize } from '../../systems/fog/types';
 import { ToolButton } from './ToolButton';
@@ -73,7 +74,7 @@ interface NarrativeToolbarProps {
   onFogBrushSelect: (size: FogBrushSize) => void;
 }
 
-export function NarrativeToolbar({ state, fogState, onToolSelect, onViewSelect, onFogBrushSelect }: NarrativeToolbarProps) {
+export const NarrativeToolbar = memo(function NarrativeToolbar({ state, fogState, onToolSelect, onViewSelect, onFogBrushSelect }: NarrativeToolbarProps) {
   return (
     <div className="pointer-events-none absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-30">
       <div className="pointer-events-auto flex flex-col gap-0.5 rounded-xl border border-subtle bg-zinc-950/60 p-1 shadow-cinematic-md blur-ambient-md">
@@ -141,4 +142,4 @@ export function NarrativeToolbar({ state, fogState, onToolSelect, onViewSelect, 
       </div>
     </div>
   );
-}
+});

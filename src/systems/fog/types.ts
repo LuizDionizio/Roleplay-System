@@ -1,7 +1,5 @@
-export interface WorldPosition {
-  x: number;
-  y: number;
-}
+import type { WorldPosition } from '../../core/spatial/types';
+export type { WorldPosition };
 
 export interface RevealZone {
   id: string;

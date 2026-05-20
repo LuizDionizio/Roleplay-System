@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { PanelGlow } from './ui/PanelGlow'
 import { ChevronIcon } from './ui/ChevronIcon'
 
@@ -11,7 +11,7 @@ const LOG_ENTRIES = [
   { time: '21:16', type: 'player', author: 'Theron', text: 'Mantenho a espada erguida e avanço com cautela.' },
 ]
 
-function LogMessage({ entry }: { entry: (typeof LOG_ENTRIES)[number] }) {
+const LogMessage = memo(function LogMessage({ entry }: { entry: (typeof LOG_ENTRIES)[number] }) {
   const styles = {
     system: 'text-zinc-500 italic',
     narration: 'text-amber-200/80 font-medium',
@@ -36,22 +36,34 @@ function LogMessage({ entry }: { entry: (typeof LOG_ENTRIES)[number] }) {
       </div>
     </div>
   )
-}
+})
 
-export function Chronicle({ open, setOpen }: { open: boolean, setOpen: (open: boolean | ((prev: boolean) => boolean)) => void }) {
+export const Chronicle = memo(function Chronicle({ open, setOpen }: { open: boolean, setOpen: (open: boolean | ((prev: boolean) => boolean)) => void }) {
   const [chronicleHeight, setChronicleHeight] = useState(224) // 224px = 14rem
   const [isResizingChronicle, setIsResizingChronicle] = useState(false)
 
   useEffect(() => {
     if (!isResizingChronicle) return
 
+    let rafId: number | null = null;
+    let pendingHeight = chronicleHeight;
+
     const handlePointerMove = (e: PointerEvent) => {
-      // Calculate height from pointer to the bottom edge of screen
       const newHeight = document.documentElement.clientHeight - e.clientY
-      setChronicleHeight(Math.max(150, Math.min(newHeight, 500)))
+      pendingHeight = Math.max(150, Math.min(newHeight, 500))
+      
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          setChronicleHeight(pendingHeight);
+        });
+      }
     }
 
     const handlePointerUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       setIsResizingChronicle(false)
     }
 
@@ -60,11 +72,14 @@ export function Chronicle({ open, setOpen }: { open: boolean, setOpen: (open: bo
     document.body.style.userSelect = 'none'
 
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
       document.body.style.userSelect = ''
     }
-  }, [isResizingChronicle])
+  }, [isResizingChronicle, chronicleHeight])
 
   return (
     <footer
@@ -153,4 +168,4 @@ export function Chronicle({ open, setOpen }: { open: boolean, setOpen: (open: bo
       </button>
     </footer>
   )
-}
+})

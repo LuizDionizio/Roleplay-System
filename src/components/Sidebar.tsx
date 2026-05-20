@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { ChevronIcon } from './ui/ChevronIcon'
 
 const PLAYERS = [
@@ -8,20 +8,32 @@ const PLAYERS = [
   { name: 'Elara', role: 'Maga', status: 'online', initials: 'EL' },
 ]
 
-export function Sidebar({ open, setOpen }: { open: boolean, setOpen: (open: boolean | ((prev: boolean) => boolean)) => void }) {
+export const Sidebar = memo(function Sidebar({ open, setOpen }: { open: boolean, setOpen: (open: boolean | ((prev: boolean) => boolean)) => void }) {
   const [sidebarWidth, setSidebarWidth] = useState(256) // 256px = 16rem
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
 
   useEffect(() => {
     if (!isResizingSidebar) return
 
+    let rafId: number | null = null;
+    let pendingWidth = sidebarWidth;
+
     const handlePointerMove = (e: PointerEvent) => {
-      // Calculate width from pointer to the right edge of screen
       const newWidth = document.documentElement.clientWidth - e.clientX
-      setSidebarWidth(Math.max(200, Math.min(newWidth, 480)))
+      pendingWidth = Math.max(200, Math.min(newWidth, 480))
+      
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          setSidebarWidth(pendingWidth);
+        });
+      }
     }
 
     const handlePointerUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       setIsResizingSidebar(false)
     }
 
@@ -30,11 +42,14 @@ export function Sidebar({ open, setOpen }: { open: boolean, setOpen: (open: bool
     document.body.style.userSelect = 'none'
 
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
       document.body.style.userSelect = ''
     }
-  }, [isResizingSidebar])
+  }, [isResizingSidebar, sidebarWidth])
 
   return (
     <aside
@@ -127,4 +142,4 @@ export function Sidebar({ open, setOpen }: { open: boolean, setOpen: (open: bool
       </button>
     </aside>
   )
-}
+})
